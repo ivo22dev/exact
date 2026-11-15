@@ -14,4 +14,4 @@ export function beside(name, base = 'dist') {
 }
 
 /** The same, as a regular expression's source for a path segment (`dist.gen`, `dist.stage-a1b2c3`). */
-export const besidePattern = (base = 'dist') => `${base.replaceAll('.', '\\.')}\\.(?:${BESIDE.map((n) => n.replaceAll('.', '\\.')).join('|')}|${STAGE}[^/]+)`;
+export const besidePattern = (base = 'dist') => `${base.replaceAll('.', '\\.')}\\.(?:${BESIDE.map((n) => n.replaceAll('.', '\\.')).join('|')}|${STAGE}[^/\\\\]+)`;

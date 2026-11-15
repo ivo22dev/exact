@@ -44,7 +44,7 @@ const CHECKPOINT_BYTES = 16 * 1024 * 1024, CHECKPOINTS = 8;
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 // (What a build in `dist` keeps beside it, `dist.gen` and the rest, is no source: beside.mjs.)
-const skipped = new RegExp(String.raw`(^|\/)(target|dist|${besidePattern()}|node_modules|conformance)(\/|$)|(^|\/)\.|\.md$`);
+const skipped = new RegExp(String.raw`(^|[\\/])(target|dist|${besidePattern()}|dist-windows|node_modules|conformance)([\\/]|$)|(^|[\\/])\.|\.md$`);
 /** The files beside app.json a setting is read from (`import.meta.env`, LLP 1153 D4): inputs, though dot files. */
 const settingsFile = (name) => /^\.env(?:\.local)?$/.test(String(name));
 /** Whether `path` changed from `since` (ms) until now, by the entry's own times (lstat: a link replaced by one to an older
@@ -69,6 +69,11 @@ let building = null; // the build in flight, stopped with the server
 const stopBuild = (signal = 'SIGTERM') => {
   if (!building) return;
   const pid = building.pid;
+  if (process.platform === 'win32') {
+    try { spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch {}
+    try { building.kill(); } catch {}
+    return;
+  }
   try { process.kill(-pid, signal); } catch { building.kill(signal); }
   // One that does not stop is killed in 5 s, its group with it (not once
   // it is gone: its group id could be another's by then).
@@ -129,7 +134,7 @@ function build(app, dist, keep = () => false, compiler = null, superseded = null
     // The JS target's build itself, rendering no pages (every route is the
     // shell), with the completion marker host/web/build.mjs writes.
     const child = building = spawn(process.execPath, [resolve(root, 'host/web-js/build.mjs'), app.name, '--out', stage, '--render', 'none', '--dev'],
-      { cwd: root, env: { ...process.env, EXACT_APP_DIR: app.dir, ...(compiler ? { EXACT_WEB_COMPILER: compiler } : {}) }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+      { cwd: root, env: { ...process.env, EXACT_APP_DIR: app.dir, ...(compiler ? { EXACT_WEB_COMPILER: compiler } : {}) }, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
     let log = '';
     child.stdout.on('data', (d) => { log += d; });
     child.stderr.on('data', (d) => { log += d; });
@@ -139,6 +144,7 @@ function build(app, dist, keep = () => false, compiler = null, superseded = null
     // outlive a stopped leader for a moment, holding Cargo's lock): waited
     // for, 5 s at most before they are killed.
     const groupGone = (then, until = Date.now() + 5000) => {
+      if (process.platform === 'win32') { clearTimeout(child.escalate); return then(); }
       try { process.kill(-child.pid, 0); } catch (e) { if (e.code === 'ESRCH') { clearTimeout(child.escalate); return then(); } }
       if (Date.now() > until) { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } }
       setTimeout(() => groupGone(then, until), 20);
@@ -383,7 +389,7 @@ export async function devJs({ app, dist, port, host, origins, gate, lan, allowHo
     }
     Object.assign(tool, { path: ownTool, set: false });
     const started = new Date();
-    const child = tool.child = spawn('cargo', ['build', '-q', '--profile', 'host-dev', '-p', 'exact-web-js'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'], detached: true });
+    const child = tool.child = spawn('cargo', ['build', '-q', '--profile', 'host-dev', '-p', 'exact-web-js'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
     let err = '';
     child.stderr.on('data', (d) => { err = (err + d).slice(-64000); });
     child.on('error', (e) => { if (tool.child === child) { tool.child = null; console.log(`the design reader did not build (design edits take the full build): ${e.message}`); resumeAfterReader(); } });
@@ -405,7 +411,7 @@ export async function devJs({ app, dist, port, host, origins, gate, lan, allowHo
         cleaned = true;
         console.log(`the design reader did not link (stale incremental state in ${stale.join(', ')}): cleaning ${stale.length === 1 ? 'it' : 'them'} from host-dev and building it again`);
         // A group of its own, which the loop's stop ends too.
-        const clean = tool.cleaner = spawn('cargo', ['clean', '-q', '--profile', 'host-dev', ...stale.flatMap((c) => ['-p', c])], { cwd: root, stdio: 'ignore', detached: true });
+        const clean = tool.cleaner = spawn('cargo', ['clean', '-q', '--profile', 'host-dev', ...stale.flatMap((c) => ['-p', c])], { cwd: root, stdio: 'ignore', detached: process.platform !== 'win32', windowsHide: true });
         clean.on('exit', (code) => {
           if (tool.cleaner !== clean) return;
           tool.cleaner = null;
@@ -445,7 +451,7 @@ export async function devJs({ app, dist, port, host, origins, gate, lan, allowHo
         const out = resolve(app.target, `inspect-${digest}-${process.pid}.json`);
         let compiler;
         try { compiler = toolFresh() ? launch(tool.path) : webCompiler(); } catch (error) { tables.delete(digest); console.log(`inspect table: ${error.message}`); return done(null); }
-        const child = spawn(compiler.cmd, [...compiler.pre, 'inspect-table', plan, out], { cwd: root, env: compiler.env, stdio: ['ignore', 'ignore', 'pipe'], detached: true });
+        const child = spawn(compiler.cmd, [...compiler.pre, 'inspect-table', plan, out], { cwd: root, env: compiler.env, stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
         inspections.add(child);
         child.once('close', () => inspections.delete(child));
         let err = '';
@@ -470,7 +476,7 @@ export async function devJs({ app, dist, port, host, origins, gate, lan, allowHo
     let compiler;
     try { compiler = readOnly || toolFresh() ? launch(tool.path) : webCompiler(); } catch (error) { return done({ error: error.message }); }
     // A group: the debug fallback is a `cargo run`, stopped with its compilers.
-    const child = tool.reading = spawn(compiler.cmd, [...compiler.pre, 'design', resolve(app.dir, 'app.contract'), '-'], { cwd: root, env: compiler.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+    const child = tool.reading = spawn(compiler.cmd, [...compiler.pre, 'design', resolve(app.dir, 'app.contract'), '-'], { cwd: root, env: compiler.env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
     child.on('error', (e) => done({ error: e.message }));
     child.stdin.on('error', () => {});
     child.stdin.end(text);
@@ -788,7 +794,7 @@ export async function devJs({ app, dist, port, host, origins, gate, lan, allowHo
       packages.add(dir);
       // A package's dot directories are its sources too; only its own
       // node_modules is not.
-      watchers.push(watch(dir, { recursive: true }, changed(dir, /(^|\/)node_modules(\/|$)/, false)));
+      watchers.push(watch(dir, { recursive: true }, changed(dir, /(^|[\\/])node_modules([\\/]|$)/, false)));
     }
     // One entry of a directory: a node_modules not made yet, or an install
     // that is a link. Its making, or its retargeting, is an edit.
@@ -845,7 +851,7 @@ es.onmessage=e=>{const m=JSON.parse(e.data);if(m.kind==='forma-batch'||m.kind===
     if (!toolFresh()) return done({ fallback: true });
     if (!patcher.child || patcher.built !== tool.built) {
       stopGroup(patcher.child);
-      const child = patcher.child = spawn(tool.path, ['design-serve', resolve(app.dir, 'app.contract')], { cwd: root, env: toolEnv(), stdio: ['pipe', 'pipe', 'ignore'], detached: true });
+      const child = patcher.child = spawn(tool.path, ['design-serve', resolve(app.dir, 'app.contract')], { cwd: root, env: toolEnv(), stdio: ['pipe', 'pipe', 'ignore'], detached: process.platform !== 'win32', windowsHide: true });
       patcher.built = tool.built;
       let buffered = '';
       child.stdin.on('error', () => {});

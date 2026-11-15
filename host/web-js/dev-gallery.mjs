@@ -65,12 +65,13 @@ export function galleryLoop({ app, root, appDist, channel = () => null, client, 
    * group is gone (the builder's own children, its `git`, outlive it a moment), killed after 5 s more. */
   function step(cmd, args, options) {
     return new Promise((done) => {
-      const c = spawn(cmd, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], detached: true, ...options });
+      const c = spawn(cmd, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true, ...options });
       procs.add(c);
       let output = '';
       c.stdout?.on('data', (d) => { output += d; });
       c.stderr?.on('data', (d) => { output += d; });
       const gone = (code, until = Date.now() + 5000) => {
+        if (process.platform === 'win32') { procs.delete(c); return done({ code, output }); }
         try { process.kill(-c.pid, 0); } catch (e) { if (e.code === 'ESRCH') { procs.delete(c); return done({ code, output }); } }
         if (Date.now() > until) { try { process.kill(-c.pid, 'SIGKILL'); } catch { /* gone */ } }
         setTimeout(() => gone(code, until), 20);

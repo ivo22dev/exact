@@ -456,6 +456,14 @@ export function chromium({ needs = [], environment = process.env, platform = pro
   const builds = chromiumBuilds(full ?? playwrightFull(), platform, arch), wantsFull = needs.length > 0;
   const executable = wantsFull ? builds.full : builds.shell;
   if (executable && executableAt(executable)) return { executable, unavailable: null };
+  if (platform === 'win32') {
+    const winChrome = [
+      environment.PROGRAMFILES && resolve(environment.PROGRAMFILES, 'Google/Chrome/Application/chrome.exe'),
+      environment['PROGRAMFILES(X86)'] && resolve(environment['PROGRAMFILES(X86)'], 'Google/Chrome/Application/chrome.exe'),
+      environment.LOCALAPPDATA && resolve(environment.LOCALAPPDATA, 'Google/Chrome/Application/chrome.exe'),
+    ].filter(Boolean).find(executableAt);
+    if (winChrome) return { executable: winChrome, unavailable: null };
+  }
   const [what, browser] = wantsFull ? ['Chromium', 'chromium'] : ['Chromium headless shell', 'chromium-headless-shell'];
   const where = executable ? `at ${executable}` : `for ${platform}-${arch}`;
   return { executable: executable ?? builds.full, unavailable: `${what} is missing ${where}; install it with bunx playwright@${playwrightVersion()} install ${browser}, or set CHROME to a browser` };
@@ -1011,18 +1019,18 @@ export function gitIgnored(dir, keep = []) {
 // database and its journal are written as the app runs (round 4's book-club: a
 // write-ahead log made every native drive stale; LLP 1116.002 D4).
 export const OUTPUT = /\.(png|jpe?g|gif|webp|apng|avif|bmp|log|txt|mov|mp4|webm|pdf|trace|world|csv|tsv|db|sqlite3?)(-(wal|shm|journal))?$/i;
-export const INPUT_TREE = /^(assets|deck|gpu|art|modules|fonts|strings|logic|data|web|apple|ios|macos|linux)(\/|$)/;
+export const INPUT_TREE = /^(assets|deck|gpu|art|modules|fonts|strings|logic|data|web|apple|ios|macos|linux)([\\/]|$)/;
 // An agent's own tree (notes: shots/, tools/; platformer: drive.sh, tools/*.ops)
 // and a test file are never inputs, even when the name looks like a source.
-const AGENT_TREE = /^(shots|tools|repros)(\/|$)/;
-const TEST_FILE = /(^|\/)[^/]*\.test\.(?:m?js|ts|rs|contract)$/;
+const AGENT_TREE = /^(shots|tools|repros)([\\/]|$)/;
+const TEST_FILE = /(^|[\\/])[^\\/]*\.test\.(?:m?js|ts|rs|contract)$/;
 // A shell or op-list helper outside the trees a build actually reads. A `.js`
 // or `.mjs` file is read through `moduleGraph` like a `.ts`: one app.ts
 // imports counts, one it never imports (an export script beside the app) is
 // no input; without a graph every one counts, since a stale build run as
 // fresh is worse than a rebuild.
 const HELPER = /\.(?:sh|ops)$/;
-const SCRIPT_TREE = /^(logic|data|gpu|render|art|assets|deck|modules)(\/|$)/;
+const SCRIPT_TREE = /^(logic|data|gpu|render|art|assets|deck|modules)([\\/]|$)/;
 
 /** A skip for an app's own files that no build reads. A file a build can
  * read always counts, ignored by Git or not: what the bake captures, anything

@@ -60,7 +60,7 @@ async function stopWindowsTree(child, exit, spawnTool) {
 export function runBuildTree(command, args, options, own, cancelled) {
   return new Promise((ok, fail) => {
     if (cancelled()) return fail(new Error('build cancelled'));
-    const child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
     own(child);
     let output = '';
     child.stdout.on('data', data => { output += data; });
@@ -87,7 +87,7 @@ export function startupBuilds() {
   return {
     async run(command, args, options) {
       if (cancelled) await stopping;
-      child = spawn(command, args, {...options, detached:true});
+      child = spawn(command, args, {...options, detached: process.platform !== 'win32', windowsHide: true});
       exit = new Promise((ok, reject) => { child.once('error', reject); child.once('exit', code => ok(code ?? 1)); });
       const code = await exit;
       if (cancelled) await stopping;

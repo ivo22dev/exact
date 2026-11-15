@@ -16,6 +16,8 @@ import { allowHostArgs, developmentGate, installBrowserOrigins, LOCAL_IOS_INSTAL
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unwatchFile, watchFile, writeSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { slashRelative, within } from '../../scripts/paths.mjs';
+import { EXE } from '../web-js/module.mjs';
+import { besidePattern } from './beside.mjs';
 import { rustPackage, rustOutput, rustInputs, rustCards } from '../../scripts/rust.mjs';
 import { gpuModules, shaderWatchRoots, rustPolicy, rebuildPolicy } from '../../scripts/app.mjs';
 import { HOST_DEV, webDist, cargoReproducibilityFlags, compilerPaths, developmentBuildEnv, developmentCandidate, devBinRun, pendingBuildInputs, readBuilds, resolveApp } from '../../scripts/app.mjs';
@@ -217,10 +219,10 @@ const gpuOnly = files => !tuning?.paths.size && !producersOnly && files.length >
   && files.every(path => path.endsWith('.rs') && gpuInputs.has(path) && !appInputs.has(path));
 const budget = /\|\s*Dev restart[^|]*\|\s*([^|\n]+)/.exec(readFileSync(resolve(root, 'rules/RULES.md'), 'utf8'))?.[1].trim() ?? '?';
 const assetTrees = [...[['assets', 'assets'], ['deck', 'deck']].map(([from, to]) => [resolve(app.dir, from), to]), ...shaderWatchRoots(app).map(root => [root, 'shaders'])];
-const skipped = /(^|[\\/])(target|dist(?:\.previous)?|\.build|node_modules)([\\/]|$)/;
+const skipped = new RegExp(String.raw`(^|[\\/])(target|dist(?:\.previous)?|${besidePattern()}|dist-windows|\.build|node_modules)([\\/]|$)`);
 const shaderDigests = new Map();
 const toolingEnv = { ...buildEnv, CARGO_TARGET_DIR: app.target };
-const reflectBin = resolve(app.target, 'debug/exact-gpu-reflect');
+const reflectBin = resolve(app.target, `debug/exact-gpu-reflect${EXE}`);
 const reflectBuild = ['the GPU tools (exact-gpu-reflect)', 'cargo', ['build', '-q', '-p', 'exact-gpu-reflect'], { cwd: root, env: toolingEnv }];
 function reflectShaders(tree) {
   if (!existsSync(reflectBin)) {
@@ -561,7 +563,7 @@ function startCompiler() {
   // web crate without one bakes through the generic compiler.
   const web = JSON.parse(metadata.stdout).packages.find(p=>p.name===app.crate('web'));
   const devBin = web?.targets.find(t=>t.kind.includes('bin')&&(t.name==='dev'||t.name.endsWith('-dev')))?.name;
-  const run = devBinRun(app, devBin, buildEnv); dev = spawn('cargo', [...run.args, '--', source, plan], { cwd: run.cwd, env: run.env, stdio: ['pipe', 'pipe', 'inherit'], detached: true });
+  const run = devBinRun(app, devBin, buildEnv); dev = spawn('cargo', [...run.args, '--', source, plan], { cwd: run.cwd, env: run.env, stdio: ['pipe', 'pipe', 'inherit'], detached: process.platform !== 'win32', windowsHide: true });
   dev.stdin.on('error', () => {});
   const me = dev;
   console.log(`compiler pid ${dev.pid}`);
@@ -674,8 +676,8 @@ async function startModuleCompiler() {
   if (built.status !== 0) throw new Error('the module producer did not build');
   const scratch = resolve(app.target, 'module-dev');
   mkdirSync(scratch, { recursive: true });
-  const child = dev = spawn(resolve(app.target, HOST_DEV, 'exact-js-bake'), [app.dir, '--serve'], {
-    cwd: root, env: toolingEnv, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
+  const child = dev = spawn(resolve(app.target, HOST_DEV, `exact-js-bake${EXE}`), [app.dir, '--serve'], {
+    cwd: root, env: toolingEnv, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
   });
   console.log(`compiler pid ${child.pid}`);
   let active = null, buffered = '', errors = '';
@@ -794,7 +796,7 @@ async function startModuleCompiler() {
       packageDirs.add(dir);
       // A package that cannot be watched is said, never a stop to the producer.
       try {
-        const handle = watchModuleSources(dir, name => /(^|\/)node_modules(\/|$)/.test(name), moduleChanged);
+        const handle = watchModuleSources(dir, name => /(^|[\\/])node_modules([\\/]|$)/.test(name), moduleChanged);
         if (handle.error) { console.error(`cannot watch ${dir}: ${handle.error.message}`); handle.close(); }
         else watches.push(handle);
       } catch (error) { console.error(`cannot watch ${dir}: ${error.message}`); }
@@ -848,7 +850,7 @@ function drainBuilds() {
     const files = [...new Set([...lastFailed, ...changed])]; lastFailed = new Set(); changed = new Set();
     if (app.manifest.game) {
       building = true; early?.phase('check', 'build');
-      const check = hostBuildChild = spawn(process.execPath, [resolve(root, 'game/app/shells.mjs'), app.dir, '--check'], {cwd:root, env:buildEnv, stdio:['ignore','pipe','pipe'], detached:true});
+      const check = hostBuildChild = spawn(process.execPath, [resolve(root, 'game/app/shells.mjs'), app.dir, '--check'], {cwd:root, env:buildEnv, stdio:['ignore','pipe','pipe'], detached: process.platform !== 'win32', windowsHide: true});
       let output = '';
       for (const stream of [check.stdout, check.stderr]) stream.on('data', bytes => { output += bytes; process.stdout.write(bytes); });
       check.on('exit', code => {
@@ -866,7 +868,7 @@ function drainBuilds() {
 }
 function produceRustNow() {
   if (!rustChild) {
-    const child=rustChild=spawn(process.execPath,[resolve(root,'scripts/rust.mjs'),app.name,'--serve'],{cwd:root,env:buildEnv,detached:true,stdio:['pipe','pipe','pipe']});
+    const child=rustChild=spawn(process.execPath,[resolve(root,'scripts/rust.mjs'),app.name,'--serve'],{cwd:root,env:buildEnv,detached: process.platform !== 'win32',windowsHide:true,stdio:['pipe','pipe','pipe']});
     let buffer='';
     const failed=error=>{
       if(rustChild!==child)return;
@@ -1201,7 +1203,7 @@ function watchCompilerInputs(contract = contractGraph()) {
         watched.set(target,{close:()=>unwatchFile(target,listener),nativeOnly:only});
       }else watched.set(target,{nativeOnly:only,...watchDirectoryInputs(target,changedPath,{
         readNames:directory=>resourceDirectories.has(directory)?readdirSync(directory):compilerInputTrees.includes(directory)?directoryInputNames(directory):readdirSync(directory),
-        ignore:name=>!resourceDirectories.has(target)&&(skipped.test(name)||/(^|\/)\./.test(name)),
+        ignore:name=>!resourceDirectories.has(target)&&(skipped.test(name)||/(^|[\\/])\./.test(name)),
       })});
     }catch(error){console.error(`cannot watch ${target}: ${error.message}`);}
   }
@@ -1229,7 +1231,7 @@ function rebuildNow(files) {
   building = true; early?.phase('host', 'build');
   const t = Date.now();
   console.log(`rust: ${files.length} file${files.length === 1 ? '' : 's'} changed (${files.slice(0, 3).join(', ')}${files.length > 3 ? ', …' : ''}) — rebuilding the ${producersOnly ? "bake" : "wasm"}`);
-  const b = hostBuildChild = spawn(process.execPath, [resolve(root, 'host/web/build.mjs'), app.crate('web'), hostBuild], { cwd: root, env:buildEnv, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const b = hostBuildChild = spawn(process.execPath, [resolve(root, 'host/web/build.mjs'), app.crate('web'), hostBuild], { cwd: root, env:buildEnv, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
   let out = '';
   b.stdout.on('data', (d) => { out += d; });
   b.stderr.on('data', (d) => { out += d; process.stderr.write(d); });

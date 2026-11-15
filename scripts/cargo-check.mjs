@@ -11,11 +11,13 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 /** Add rustup's tools when a non-interactive shell omitted them from PATH. */
 export function cargoOnPath(env = process.env, home = homedir()) {
-  const dirs = (env.PATH ?? '').split(delimiter).filter(Boolean);
-  if (dirs.some(dir => existsSync(resolve(dir, 'cargo')))) return true;
+  const bin = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
+  const pathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') ?? 'PATH';
+  const dirs = (env[pathKey] ?? '').split(delimiter).filter(Boolean);
+  if (dirs.some(dir => existsSync(resolve(dir, bin)) || existsSync(resolve(dir, 'cargo')))) return true;
   const rustup = resolve(env.CARGO_HOME ?? resolve(home, '.cargo'), 'bin');
-  if (!existsSync(resolve(rustup, 'cargo'))) return false;
-  env.PATH = [rustup, ...dirs].join(delimiter);
+  if (!existsSync(resolve(rustup, bin)) && !existsSync(resolve(rustup, 'cargo'))) return false;
+  env[pathKey] = [rustup, ...dirs].join(delimiter);
   return true;
 }
 

@@ -39,7 +39,7 @@ export const launch = (cmd, pre = [], done = () => {}, env = process.env) => ({ 
 /** The packages whose source roots the web build's receipt holds (host/web/build.mjs `webSourceRoots`). */
 export const WEB_CRATES = ['exact-web-js', 'exact-web', 'exact-js-bake', 'exact-markdown-editor', 'exact-web-js-motion', 'exact-textflow'];
 
-const TRIPLES = { 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin', 'linux-x64': 'x86_64-unknown-linux-gnu', 'linux-arm64': 'aarch64-unknown-linux-gnu' };
+const TRIPLES = { 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin', 'linux-x64': 'x86_64-unknown-linux-gnu', 'linux-arm64': 'aarch64-unknown-linux-gnu', 'win32-x64': 'x86_64-pc-windows-msvc', 'win32-arm64': 'aarch64-pc-windows-msvc' };
 /** This machine's target triple, as Rust names it, without asking rustc. */
 export const hostTriple = () => TRIPLES[`${process.platform}-${process.arch}`] ?? `${process.arch}-${process.platform}`;
 

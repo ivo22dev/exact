@@ -458,7 +458,12 @@ export function resolveApp(nameOrCrate) {
     workspace = resolve(dir, '.shells');
   }
   const generated = workspace === shellsDir(dir), own = manifest.game || generated ? dir : workspace;
-  const target = process.env.CARGO_TARGET_DIR ? resolve(process.env.CARGO_TARGET_DIR) : resolve(own, 'target');
+  const ownTarget = resolve(own, 'target');
+  const sharedTarget = process.env.EXACT_SHARED_TARGET ? resolve(process.env.EXACT_SHARED_TARGET) : null;
+  if (outside && sharedTarget && !existsSync(ownTarget) && existsSync(sharedTarget)) {
+    try { symlinkSync(sharedTarget, ownTarget, process.platform === 'win32' ? 'junction' : 'dir'); } catch {}
+  }
+  const target = process.env.CARGO_TARGET_DIR ? resolve(process.env.CARGO_TARGET_DIR) : ownTarget;
   assertOwnTarget(target, own);
   // What a build asks for before it runs Cargo in the workspace, once: a generated workspace written current with the
   // manifest (LLP 1153 D1.3) and its copied lock resolved (the first build fetches what the cache lacks), or an

@@ -563,6 +563,12 @@ if (verb === 'contract') {
   if ((verb === 'test' || verb === 'agent') && host === 'windows' && !rest.includes('--size') && existsSync(manifest)) rest.push('--size', windowsWindow(JSON.parse(readFileSync(manifest, 'utf8'))).join('x'));
   // An Android drive is the APK's (`bun exact.mjs android` installs it), unless it asks for the headless Linux host.
   if ((verb === 'test' || verb === 'agent') && host === 'android' && !rest.includes('--headless') && !rest.includes('--reader')) rest.push('--reader');
+  const needsAndroidDevice = (verb === 'android' && !rest.includes('--no-install') && !rest.includes('--bundle') && !rest.includes('--write-locks'))
+    || (['test', 'agent', 'verify'].includes(verb) && host === 'android');
+  if (needsAndroidDevice && !process.env.ANDROID_SERIAL) {
+    const { ensureAndroidTargetInteractive } = await import(resolve(exact2, 'scripts/android-select.mjs'));
+    await ensureAndroidTargetInteractive(process.env);
+  }
   // A finished site is served to this machine unless --lan asks for every interface (LLP 1153 D3.3); the dev loop
   // and serve.mjs run alone keep LAN (LLP 1023 D8).
   if (verb === 'serve' && !rest.includes('--lan')) rest.push('--loopback');

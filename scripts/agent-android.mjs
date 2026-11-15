@@ -61,7 +61,8 @@ export const androidBinary = (app, bin, reader = !!process.env.EXACT_ANDROID_REA
 export const androidBuild = (app, bin = null) => [...linuxBuild(app, bin), '--target', ANDROID_TARGET];
 
 export const androidSdk = (env = process.env) => env.ANDROID_HOME ?? env.ANDROID_SDK_ROOT
-  ?? resolve(homedir(), process.platform === 'darwin' ? 'Library/Android/sdk' : 'Android/Sdk');
+  ?? (process.platform === 'win32' && env.LOCALAPPDATA ? resolve(env.LOCALAPPDATA, 'Android/Sdk') : null)
+  ?? resolve(homedir(), process.platform === 'darwin' ? 'Library/Android/sdk' : process.platform === 'win32' ? 'AppData/Local/Android/Sdk' : 'Android/Sdk');
 /** SDK packages from the APK's Gradle declaration, also used by `exact setup`. */
 export function androidSdkPackages(gradle = readFileSync(resolve(import.meta.dir, '../host/android/app/build.gradle.kts'), 'utf8')) {
   const sdk = /compileSdk\s*\{\s*version\s*=\s*release\((\d+)\)\s*\{\s*minorApiLevel\s*=\s*(\d+)/.exec(gradle);
@@ -146,7 +147,8 @@ export function androidSdkFix(env = process.env, packages = androidSdkPackages()
 }
 
 const adb = (env = process.env) => {
-  const tool = resolve(androidSdk(env), 'platform-tools/adb');
+  const suffix = process.platform === 'win32' ? '.exe' : '';
+  const tool = resolve(androidSdk(env), `platform-tools/adb${suffix}`);
   return existsSync(tool) ? tool : 'adb';
 };
 

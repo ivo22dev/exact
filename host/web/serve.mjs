@@ -1323,7 +1323,7 @@ function settleBuild(dist) {
  * since the build is a change whatever its time; it names no file. As real paths: the app may be named through a link. */
 export function appSources(app, out) {
   const real = (p) => { try { return realpathSync(p); } catch { try { return resolve(realpathSync(dirname(p)), basename(p)); } catch { return resolve(p); } } };
-  const SKIP = new Set(['node_modules', 'target', 'test-results', 'playwright-report']), cargo = process.env.CARGO_TARGET_DIR ? real(process.env.CARGO_TARGET_DIR) : null;
+  const SKIP = new Set(['node_modules', 'target', 'dist', 'web-dist', 'dist-windows', 'test-results', 'playwright-report']), cargo = process.env.CARGO_TARGET_DIR ? real(process.env.CARGO_TARGET_DIR) : null;
   let paths = [], newest = 0, root = real(app), output = real(out);
   const walk = (dir) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {

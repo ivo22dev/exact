@@ -75,7 +75,7 @@ export function phased(what, command, args, options, log = console.log, echo = (
 export async function phasedAsync(what, command, args, options, own, log = console.log, echo = (bytes) => process.stderr.write(bytes)) {
   log(`${PHASE}building ${what}`);
   const started = Date.now();
-  const child = spawn(command, args, { ...options, detached: true, stdio: ['ignore', 'inherit', 'pipe'] });
+  const child = spawn(command, args, { ...options, detached: process.platform !== 'win32', windowsHide: true, stdio: ['ignore', 'inherit', 'pipe'] });
   own(child);
   let tail = '';
   child.stderr.on('data', bytes => { echo(bytes); tail = (tail + bytes.toString('utf8')).slice(-16 * 1024); });
